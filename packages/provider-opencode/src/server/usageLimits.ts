@@ -191,8 +191,12 @@ export const readOpenCodeGoUsageLimits = Effect.fn("readOpenCodeGoUsageLimits")(
     ];
     const crypto = yield* Crypto.Crypto;
     // Unkeyed hashes match across environments; random Go keys resist offline guessing.
+    // Console tokens rotate on refresh, so their usage is keyed by workspace instead.
+    const fingerprintSource = credential.workspaceID
+      ? `opencode-console\0${credential.workspaceID}`
+      : `opencode-go\0${credential.token}`;
     const credentialFingerprint = yield* crypto
-      .digest("SHA-256", new TextEncoder().encode(`opencode-go\0${credential.token}`))
+      .digest("SHA-256", new TextEncoder().encode(fingerprintSource))
       .pipe(Effect.map(Hex.encode), Effect.orDie);
     return {
       ...makeUsageLimits({ checkedAt, windows }),
