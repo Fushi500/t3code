@@ -1,8 +1,9 @@
 import { assert, it } from "@effect/vitest";
 import { RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
-import { type ThreadTools, waitForRun, withEffort } from "./thread.ts";
+import { sendMessage, type ThreadTools, waitForRun, withEffort } from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -128,6 +129,44 @@ it.effect("--effort sets the option the model names its effort with", () =>
     ]);
     assert.deepStrictEqual(claude.options, [{ id: "effort", value: "max" }]);
     assert.deepStrictEqual(calls[0]?.args, { search: "gpt-6.1-sol" });
+  }),
+);
+
+it.effect("send queues by default, --now steers like the app, and --effort applies first", () =>
+  Effect.gen(function* () {
+    const sent = { threadId, runId, delivery: "steered" };
+    const { tools, calls } = scriptedTools({
+      t3_thread_configure: [
+        { modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" } },
+        { sequence: 1 },
+      ],
+      orchestrator_capabilities: [capabilities],
+      t3_thread_send: [sent, sent],
+    });
+
+    yield* sendMessage(tools, { threadId, message: "hi", effort: Option.none(), now: false });
+    yield* sendMessage(tools, { threadId, message: "stop", effort: Option.some("max"), now: true });
+
+    assert.deepStrictEqual(
+      calls.map((entry) => entry.tool),
+      [
+        "t3_thread_send",
+        "t3_thread_configure",
+        "orchestrator_capabilities",
+        "t3_thread_configure",
+        "t3_thread_send",
+      ],
+    );
+    assert.deepStrictEqual(calls[0]?.args, { threadId, message: "hi", mode: "queue" });
+    assert.deepStrictEqual(calls[3]?.args, {
+      threadId,
+      modelSelection: {
+        instanceId: "claudeAgent",
+        model: "claude-opus-5-5",
+        options: [{ id: "effort", value: "max" }],
+      },
+    });
+    assert.deepStrictEqual(calls[4]?.args, { threadId, message: "stop", mode: "auto" });
   }),
 );
 

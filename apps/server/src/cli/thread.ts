@@ -499,6 +499,39 @@ export const withEffort = Effect.fn("cli.thread.withEffort")(function* (
   };
 });
 
+/**
+ * `auto` is the app's steer path: it steers a running turn, falls back to a
+ * queue when the provider cannot take steering, and starts an idle thread.
+ */
+export const sendMessage = Effect.fn("cli.thread.sendMessage")(function* (
+  tools: ThreadTools,
+  input: {
+    readonly threadId: ThreadId;
+    readonly message: string;
+    readonly effort: Option.Option<string>;
+    readonly now: boolean;
+  },
+) {
+  const { threadId } = input;
+  if (Option.isSome(input.effort)) {
+    const { modelSelection } = yield* tools.call(
+      "t3_thread_configure",
+      { threadId },
+      ThreadConfiguration,
+    );
+    yield* tools.call(
+      "t3_thread_configure",
+      { threadId, modelSelection: yield* withEffort(tools, modelSelection, input.effort.value) },
+      Schema.Unknown,
+    );
+  }
+  return yield* tools.call(
+    "t3_thread_send",
+    { threadId, message: input.message, mode: input.now ? "auto" : "queue" },
+    OrchestratorMcpThreadSendResult,
+  );
+});
+
 const titleFromMessage = (message: string) => {
   const firstLine = message.trim().split("\n")[0]?.trim() ?? "";
   return firstLine.length > TITLE_MAX_CHARS
@@ -680,11 +713,17 @@ const threadSendCommand = Command.make("send", {
       "Reasoning effort for this message and the thread's later turns. Levels depend on the model.",
     ),
   ),
+  now: Flag.Boolean("now").pipe(
+    Flag.withDescription(
+      "Send into the running turn, like Send now in the app, instead of queuing. An idle thread starts a turn.",
+    ),
+    Flag.withDefault(false),
+  ),
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "Send a message to a thread. A busy thread gets it as its next turn; nothing is interrupted.",
+    "Send a message to a thread. A busy thread gets it as its next turn unless you pass --now.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -693,32 +732,24 @@ const threadSendCommand = Command.make("send", {
       yield* withThreadTools(
         flags,
         Effect.fn("cli.thread.send")(function* (tools) {
-          if (Option.isSome(flags.effort)) {
-            const { modelSelection } = yield* tools.call(
-              "t3_thread_configure",
-              { threadId },
-              ThreadConfiguration,
-            );
-            yield* tools.call(
-              "t3_thread_configure",
-              {
-                threadId,
-                modelSelection: yield* withEffort(tools, modelSelection, flags.effort.value),
-              },
-              Schema.Unknown,
-            );
-          }
-          const sent = yield* tools.call(
-            "t3_thread_send",
-            { threadId, message, mode: "queue" },
-            OrchestratorMcpThreadSendResult,
-          );
+          const sent = yield* sendMessage(tools, {
+            threadId,
+            message,
+            effort: flags.effort,
+            now: flags.now,
+          });
           if (flags.wait) {
             return yield* finishRun(tools, { threadId, runId: sent.runId, json: flags.json });
           }
           yield* flags.json
             ? printJson(sent)
-            : Console.log(sent.delivery === "queued" ? "Queued." : "Sent.");
+            : Console.log(
+                sent.delivery === "queued"
+                  ? "Queued."
+                  : sent.delivery === "steered"
+                    ? "Steered."
+                    : "Sent.",
+              );
         }),
       );
     }).pipe(reportThreadErrors),
