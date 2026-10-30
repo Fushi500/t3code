@@ -1,8 +1,9 @@
 import { assert, it } from "@effect/vitest";
 import { RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
-import { type ThreadTools, waitForRun } from "./thread.ts";
+import { sendMessage, type ThreadTools, waitForRun, withEffort } from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -71,5 +72,126 @@ it.effect("--wait reports its run's result when a later run is the one waiting",
       runId,
       status: "completed",
     });
+  }),
+);
+
+const capabilities = {
+  providers: [
+    {
+      providerInstanceId: "codex",
+      models: [
+        {
+          id: "gpt-6.1-sol",
+          options: [
+            { id: "reasoningEffort", values: ["low", "medium", "high", "xhigh"] },
+            { id: "fastMode", values: [false, true] },
+          ],
+        },
+      ],
+    },
+    {
+      providerInstanceId: "claudeAgent",
+      models: [
+        { id: "claude-opus-5-5", options: [{ id: "effort", values: ["low", "high", "max"] }] },
+        { id: "claude-haiku-5-5" },
+      ],
+    },
+  ],
+};
+
+it.effect("--effort sets the option the model names its effort with", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = scriptedTools({
+      orchestrator_capabilities: [capabilities, capabilities],
+    });
+
+    const codex = yield* withEffort(
+      tools,
+      {
+        instanceId: "codex",
+        model: "gpt-6.1-sol",
+        options: [
+          { id: "reasoningEffort", value: "low" },
+          { id: "fastMode", value: true },
+        ],
+      },
+      "high",
+    );
+    const claude = yield* withEffort(
+      tools,
+      { instanceId: "claudeAgent", model: "claude-opus-5-5" },
+      "max",
+    );
+
+    assert.deepStrictEqual(codex.options, [
+      { id: "fastMode", value: true },
+      { id: "reasoningEffort", value: "high" },
+    ]);
+    assert.deepStrictEqual(claude.options, [{ id: "effort", value: "max" }]);
+    assert.deepStrictEqual(calls[0]?.args, { search: "gpt-6.1-sol" });
+  }),
+);
+
+it.effect("send queues by default, --now steers like the app, and --effort applies first", () =>
+  Effect.gen(function* () {
+    const sent = { threadId, runId, delivery: "steered" };
+    const { tools, calls } = scriptedTools({
+      t3_thread_configure: [
+        { modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5-5" } },
+        { sequence: 1 },
+      ],
+      orchestrator_capabilities: [capabilities],
+      t3_thread_send: [sent, sent],
+    });
+
+    yield* sendMessage(tools, { threadId, message: "hi", effort: Option.none(), now: false });
+    yield* sendMessage(tools, { threadId, message: "stop", effort: Option.some("max"), now: true });
+
+    assert.deepStrictEqual(
+      calls.map((entry) => entry.tool),
+      [
+        "t3_thread_send",
+        "t3_thread_configure",
+        "orchestrator_capabilities",
+        "t3_thread_configure",
+        "t3_thread_send",
+      ],
+    );
+    assert.deepStrictEqual(calls[0]?.args, { threadId, message: "hi", mode: "queue" });
+    assert.deepStrictEqual(calls[3]?.args, {
+      threadId,
+      modelSelection: {
+        instanceId: "claudeAgent",
+        model: "claude-opus-5-5",
+        options: [{ id: "effort", value: "max" }],
+      },
+    });
+    assert.deepStrictEqual(calls[4]?.args, { threadId, message: "stop", mode: "auto" });
+  }),
+);
+
+it.effect("--effort fails before launching when the model cannot take that level", () =>
+  Effect.gen(function* () {
+    const { tools } = scriptedTools({
+      orchestrator_capabilities: [capabilities, capabilities, capabilities],
+    });
+    const detail = (instanceId: string, model: string, effort: string) =>
+      withEffort(tools, { instanceId, model }, effort).pipe(
+        Effect.flip,
+        Effect.map((error) => error.message),
+      );
+
+    assert.deepStrictEqual(
+      [
+        yield* detail("claudeAgent", "claude-opus-5-5", "xhigh"),
+        yield* detail("claudeAgent", "claude-haiku-5-5", "high"),
+        yield* detail("codex", "claude-opus-5-5", "high"),
+      ],
+      [
+        "--effort for claudeAgent/claude-opus-5-5 must be one of: low, high, max.",
+        "claudeAgent/claude-haiku-5-5 has no effort setting.",
+        "codex/claude-opus-5-5 is not in the server's model list, so its effort levels are unknown.",
+      ],
+    );
   }),
 );
