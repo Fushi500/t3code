@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-export type ThreadRelationshipKind = "parent" | "fork" | "subagent" | "transfer";
+export type ThreadRelationshipKind = "parent" | "fork" | "subagent" | "spawn" | "transfer";
 
 export interface ThreadRelationshipNode {
   readonly threadId: ThreadId;
@@ -94,7 +94,12 @@ export function deriveThreadRelationshipGraph(input: {
     addEdge({
       sourceThreadId: parentThreadId,
       targetThreadId: thread.id,
-      kind: thread.lineage.relationshipToParent === "subagent" ? "subagent" : "fork",
+      kind:
+        thread.lineage.relationshipToParent === "subagent"
+          ? "subagent"
+          : thread.lineage.relationshipToParent === "spawn"
+            ? "spawn"
+            : "fork",
       status: thread.activityRunStatus ?? thread.status,
     });
   }

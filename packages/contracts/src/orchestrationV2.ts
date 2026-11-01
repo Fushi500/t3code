@@ -152,7 +152,13 @@ export type OrchestrationV2ProviderRef = typeof OrchestrationV2ProviderRef.Type;
 
 export const OrchestrationV2AppThreadLineage = Schema.Struct({
   parentThreadId: Schema.NullOr(ThreadId),
-  relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
+  /**
+   * `fork` and `subagent` copy context from the parent. `spawn` only records
+   * which thread started this one (an agent launching a worker), so the two
+   * stay linked in the relationships panel without the child becoming a
+   * subagent: it keeps its own listing, search and PR watching.
+   */
+  relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent", "spawn"])),
   rootThreadId: ThreadId,
   sideChat: Schema.optional(Schema.Boolean),
 });
@@ -2902,6 +2908,13 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /**
+     * Only the server sets this, when an agent launches a worker from inside a
+     * thread. The worker keeps its own listing, but the relationships panel
+     * links it to the thread that started it instead of leaving the two
+     * unrelated.
+     */
+    spawnedByThreadId: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
