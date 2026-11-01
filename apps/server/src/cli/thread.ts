@@ -1,6 +1,7 @@
 import {
   ModelSelection,
   OrchestratorMcpCapabilitiesResult,
+  OrchestrationV2DispatchCommandResult,
   OrchestratorMcpFailure,
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadResult,
@@ -867,12 +868,53 @@ const threadShowCommand = Command.make("show", {
   ),
 );
 
+const ThreadOrganizeResult = Schema.Union([
+  OrchestrationV2DispatchCommandResult,
+  Schema.Struct({ settlesWhenTurnEnds: Schema.Literal(true) }),
+]);
+
+const settleCommand = (action: "settle" | "unsettle", description: string, done: string) =>
+  Command.make(action, { ...projectLocationFlags, thread: threadArgument, json: jsonFlag }).pipe(
+    Command.withDescription(description),
+    Command.withHandler((flags) =>
+      Effect.gen(function* () {
+        const threadId = yield* decodeThreadId(flags.thread);
+        yield* withThreadTools(
+          flags,
+          Effect.fn(`cli.thread.${action}`)(function* (tools) {
+            const result = yield* tools.call(
+              "t3_thread_organize",
+              { threadId, action },
+              ThreadOrganizeResult,
+            );
+            yield* flags.json
+              ? printJson({ threadId, ...result })
+              : Console.log("settlesWhenTurnEnds" in result ? "Settles when its turn ends." : done);
+          }),
+        );
+      }).pipe(reportThreadErrors),
+    ),
+  );
+
+const threadSettleCommand = settleCommand(
+  "settle",
+  "Settle a thread, as the app's Settle action does.",
+  "Settled.",
+);
+const threadUnsettleCommand = settleCommand(
+  "unsettle",
+  "Move a settled thread back to active.",
+  "Unsettled.",
+);
+
 export const threadCommand = Command.make("thread").pipe(
-  Command.withDescription("Start, message, and read threads on the running server."),
+  Command.withDescription("Start, message, settle, and read threads on the running server."),
   Command.withSubcommands([
     threadListCommand,
     threadStartCommand,
     threadSendCommand,
     threadShowCommand,
+    threadSettleCommand,
+    threadUnsettleCommand,
   ]),
 );
