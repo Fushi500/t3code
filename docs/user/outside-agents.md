@@ -102,6 +102,7 @@ id=$(t3 thread start . "Find why the tests are slow")
 t3 thread send "$id" "Now fix it" --wait
 t3 thread show "$id"
 t3 thread list
+t3 thread settle "$id"
 ```
 
 `.` means the project that contains the current folder; a project id also
@@ -109,7 +110,8 @@ works. A new thread uses the project's default model and permission mode, and
 runs in the project folder unless you pass `--worktree <base-branch>`. By
 default `send` waits its turn: a busy thread gets the message as its next turn.
 `--now` sends it into the running turn instead, like Send now in the app.
-Pass `-` as the message to read it from stdin.
+Pass `-` as the message to read it from stdin. `settle` moves a thread to
+Settled, like the app's Settle action, and `unsettle` brings it back.
 
 `--effort <level>` sets reasoning effort for models that have it, such as
 Codex and Claude. On `start` it goes with `--provider` and `--model`; on `send`
