@@ -371,6 +371,35 @@ it.effect("a launch retried with the same clientRequestId replays the first one"
   }),
 );
 
+it.effect("a client outside a thread links its launch under parentThreadId", () =>
+  Effect.gen(function* () {
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "auto",
+      launched,
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const launch = (extra: Record<string, unknown>) =>
+      toolkit
+        .handle("t3_thread_launch", { title: "Worker", projectId, ...extra } as never)
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    const parentThreadId = ThreadId.make("thread:orchestrator");
+    yield* launch({ parentThreadId });
+    yield* launch({});
+    expect(launched.map((input) => input.spawnedByThreadId)).toEqual([parentThreadId, undefined]);
+
+    // With no calling thread, showUnderThisThread has nothing to link to.
+    const refused = (yield* launch({ parentThreadId, showUnderThisThread: true })).at(-1)?.result;
+    expect(refused).toMatchObject({ code: "invalid_request" });
+    expect(launched).toHaveLength(2);
+  }),
+);
+
 it.effect("a launch key of any length or content gives a short id and never a defect", () =>
   Effect.gen(function* () {
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];

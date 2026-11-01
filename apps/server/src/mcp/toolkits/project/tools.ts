@@ -156,6 +156,12 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
           "Default false. When true, the new thread is linked to this one in the relationships panel, so the user can see which thread started it. It keeps its own listing, so it is not a subagent: nothing waits on it and its result does not come back to you.",
       }),
     ),
+    parentThreadId: Schema.optional(
+      ThreadId.annotate({
+        description:
+          "For callers outside a thread, such as the t3 CLI: link the new thread under this existing thread, the same way showUnderThisThread does. Inside a thread, use showUnderThisThread instead.",
+      }),
+    ),
     /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   }),

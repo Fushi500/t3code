@@ -707,6 +707,12 @@ const threadStartCommand = Command.make("start", {
     Flag.optional,
   ),
   effort: effortFlag,
+  parent: Flag.String("parent").pipe(
+    Flag.withDescription(
+      'Show the new thread under this thread in the relationships panel. Inside a T3 thread, pass "$T3CODE_THREAD_ID".',
+    ),
+    Flag.optional,
+  ),
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
@@ -720,6 +726,11 @@ const threadStartCommand = Command.make("start", {
       }
       if (Option.isSome(flags.effort) && Option.isNone(flags.model)) {
         return yield* new ThreadUsageError({ detail: "--effort needs --provider and --model." });
+      }
+      if (Option.isSome(flags.parent) && flags.parent.value.trim() === "") {
+        return yield* new ThreadUsageError({
+          detail: "--parent is empty. Outside a T3 thread, pass a thread id.",
+        });
       }
       const title = yield* decodeTitle(
         Option.getOrElse(flags.title, () => titleFromMessage(message)),
@@ -744,6 +755,7 @@ const threadStartCommand = Command.make("start", {
               message,
               ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
               ...(modelSelection === undefined ? {} : { modelSelection }),
+              ...(Option.isSome(flags.parent) ? { parentThreadId: flags.parent.value } : {}),
             },
             ThreadLaunchResult,
           );

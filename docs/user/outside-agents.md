@@ -118,6 +118,11 @@ Codex and Claude. On `start` it goes with `--provider` and `--model`; on `send`
 it applies to that message and the thread's later turns. An unknown level
 fails and lists the model's levels.
 
+`--parent <thread-id>` on `start` shows the new thread under that thread in the
+relationships panel, so an orchestrator and its workers appear together. The
+worker stays a normal thread: it keeps its own listing and nothing waits on it.
+An agent inside a T3 thread passes `--parent "$T3CODE_THREAD_ID"`.
+
 `--wait` prints the agent's reply. It exits 1 when the run fails or stops, and
 2 when the agent waits for an answer you give in the app. Add `--json` for a
 result that always includes the thread id.
