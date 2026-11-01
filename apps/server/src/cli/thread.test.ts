@@ -1,8 +1,10 @@
 import { assert, it } from "@effect/vitest";
-import { RunId, ThreadId } from "@t3tools/contracts";
+import { MessageId, RunId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as TestConsole from "effect/testing/TestConsole";
 
-import { readLatestMessages, type ThreadTools, waitForRun } from "./thread.ts";
+import { readLatestMessages, sendThreadMessage, type ThreadTools, waitForRun } from "./thread.ts";
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
@@ -159,4 +161,70 @@ it.effect("show returns a --messages count larger than one call can spread", () 
       latest(200_000),
     );
   }),
+);
+
+const sentResult = (delivery: "queued" | "started" | "steered") => ({
+  threadId,
+  messageId: MessageId.make("message-1"),
+  runId,
+  status: "running",
+  delivery,
+});
+
+it.effect("--now sends with the send-now mode so a running turn is steered", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = scriptedTools({ t3_thread_send: [sentResult("steered")] });
+
+    yield* sendThreadMessage(tools, {
+      threadId,
+      message: "Go left",
+      now: true,
+      wait: false,
+      json: false,
+    });
+
+    assert.deepStrictEqual(
+      calls.map((entry) => entry.args),
+      [{ threadId, message: "Go left", mode: "auto" }],
+    );
+  }).pipe(Effect.provide(Layer.fresh(TestConsole.layer))),
+);
+
+it.effect("send without --now still queues behind the running turn", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = scriptedTools({ t3_thread_send: [sentResult("queued")] });
+
+    yield* sendThreadMessage(tools, {
+      threadId,
+      message: "Go left",
+      now: false,
+      wait: false,
+      json: false,
+    });
+
+    assert.deepStrictEqual(
+      calls.map((entry) => entry.args),
+      [{ threadId, message: "Go left", mode: "queue" }],
+    );
+  }).pipe(Effect.provide(Layer.fresh(TestConsole.layer))),
+);
+
+it.effect("--now on an idle thread starts a normal turn and reports it sent", () =>
+  Effect.gen(function* () {
+    const { tools, calls } = scriptedTools({ t3_thread_send: [sentResult("started")] });
+
+    yield* sendThreadMessage(tools, {
+      threadId,
+      message: "Go left",
+      now: true,
+      wait: false,
+      json: false,
+    });
+
+    assert.deepStrictEqual((yield* TestConsole.logLines).map(String), ["Sent."]);
+    assert.deepStrictEqual(
+      calls.map((entry) => entry.tool),
+      ["t3_thread_send"],
+    );
+  }).pipe(Effect.provide(Layer.fresh(TestConsole.layer))),
 );

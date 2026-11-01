@@ -536,6 +536,12 @@ const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Print JSON instead of text."),
   Flag.withDefault(false),
 );
+const nowFlag = Flag.Boolean("now").pipe(
+  Flag.withDescription(
+    "Send now: steer the running turn with this message instead of queueing it behind the turn. An idle thread starts a normal turn.",
+  ),
+  Flag.withDefault(false),
+);
 const waitFlag = Flag.Boolean("wait").pipe(
   Flag.withDescription(
     "Wait for the agent to finish and print its reply. Exits 1 if the run fails and 2 if it waits for an answer.",
@@ -669,34 +675,60 @@ const threadStartCommand = Command.make("start", {
   ),
 );
 
+/**
+ * `--now` sends with `auto`, the server's send-now path: it steers a fully
+ * active turn, starts an idle thread, and queues only where a steer cannot land.
+ * Without it a busy thread always gets the message as its next turn.
+ */
+export const sendThreadMessage = Effect.fn("cli.thread.send")(function* (
+  tools: ThreadTools,
+  input: {
+    readonly threadId: ThreadId;
+    readonly message: string;
+    readonly now: boolean;
+    readonly wait: boolean;
+    readonly json: boolean;
+  },
+) {
+  const sent = yield* tools.call(
+    "t3_thread_send",
+    { threadId: input.threadId, message: input.message, mode: input.now ? "auto" : "queue" },
+    OrchestratorMcpThreadSendResult,
+  );
+  if (input.wait) {
+    return yield* finishRun(tools, {
+      threadId: input.threadId,
+      runId: sent.runId,
+      json: input.json,
+    });
+  }
+  yield* input.json
+    ? printJson(sent)
+    : Console.log(sent.delivery === "queued" ? "Queued." : "Sent.");
+});
+
 const threadSendCommand = Command.make("send", {
   ...projectLocationFlags,
   thread: threadArgument,
   message: messageArgument,
+  now: nowFlag,
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "Send a message to a thread. A busy thread gets it as its next turn; nothing is interrupted.",
+    "Send a message to a thread. A busy thread gets it as its next turn; nothing is interrupted. With --now it steers the running turn.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const threadId = yield* decodeThreadId(flags.thread);
       const message = yield* readMessageArgument(flags.message);
-      yield* withThreadTools(
-        flags,
-        Effect.fn("cli.thread.send")(function* (tools) {
-          const sent = yield* tools.call(
-            "t3_thread_send",
-            { threadId, message, mode: "queue" },
-            OrchestratorMcpThreadSendResult,
-          );
-          if (flags.wait) {
-            return yield* finishRun(tools, { threadId, runId: sent.runId, json: flags.json });
-          }
-          yield* flags.json
-            ? printJson(sent)
-            : Console.log(sent.delivery === "queued" ? "Queued." : "Sent.");
+      yield* withThreadTools(flags, (tools) =>
+        sendThreadMessage(tools, {
+          threadId,
+          message,
+          now: flags.now,
+          wait: flags.wait,
+          json: flags.json,
         }),
       );
     }).pipe(reportThreadErrors),
