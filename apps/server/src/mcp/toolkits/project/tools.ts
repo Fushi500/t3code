@@ -150,6 +150,12 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
     clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+    showUnderThisThread: Schema.optional(
+      Schema.Boolean.annotate({
+        description:
+          "Default false. When true, the new thread is linked to this one in the relationships panel, so the user can see which thread started it. It keeps its own listing, so it is not a subagent: nothing waits on it and its result does not come back to you.",
+      }),
+    ),
     /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   }),

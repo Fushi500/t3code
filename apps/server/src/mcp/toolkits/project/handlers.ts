@@ -85,6 +85,12 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         const scope = yield* McpInvocationContext.McpInvocationContext;
         const context = yield* readCaller();
         const { caller } = context;
+        if (input.showUnderThisThread === true && caller === undefined)
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "showUnderThisThread needs a calling thread. Launch from inside a thread, or omit it.",
+          });
         // A retry with the same key replays the first launch: the ids derive
         // from the caller and the key, and the launch service replays a
         // command it already accepted.
@@ -240,6 +246,9 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
               }),
           createdBy: "agent",
           creationSource: "mcp",
+          ...(input.showUnderThisThread === true && caller !== undefined
+            ? { spawnedByThreadId: caller.id }
+            : {}),
           ...(linkOrigin === undefined ? {} : { linkOrigin }),
           // Kept only alongside linkOrigin: thread.create drops it otherwise.
           ...(input.delegatedFrom === undefined ? {} : { delegatedFrom: input.delegatedFrom }),

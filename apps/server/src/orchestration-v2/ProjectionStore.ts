@@ -6847,7 +6847,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           parentThreadId:
             row.parent_thread_id === null ? null : ThreadId.make(row.parent_thread_id),
           relationshipToParent:
-            row.relationship_to_parent === "fork" || row.relationship_to_parent === "subagent"
+            row.relationship_to_parent === "fork" ||
+            row.relationship_to_parent === "subagent" ||
+            row.relationship_to_parent === "spawn"
               ? row.relationship_to_parent
               : null,
           rootThreadId: ThreadId.make(row.root_thread_id),
