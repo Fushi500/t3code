@@ -59,7 +59,7 @@ describe("thread relationships", () => {
     ).toBeNull();
   });
 
-  it.each(["fork", "subagent"] as const)(
+  it.each(["fork", "subagent", "spawn"] as const)(
     "keeps the parent edge of an opened %s omitted from the shell",
     (relationshipToParent) => {
       const parent = ThreadId.make("parent");

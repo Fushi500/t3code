@@ -2680,6 +2680,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
+    // A worker launched from inside a thread keeps its own listing, so it is
+    // linked to that thread instead of being hidden as a subagent.
+    const spawnedBy = command.spawnedByThreadId;
+    const spawnedByThread =
+      spawnedBy === undefined
+        ? null
+        : yield* projectionStore.getThread(spawnedBy).pipe(
+            Effect.catchTags({
+              ProjectionStoreThreadNotFoundError: () => Effect.succeed(null),
+            }),
+            Effect.mapError(
+              (cause) => new OrchestratorProjectionError({ threadId: spawnedBy, cause }),
+            ),
+          );
+    if (spawnedBy !== undefined && spawnedByThread === null) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `The thread that spawned ${command.threadId} (${spawnedBy}) does not exist.`,
+      });
+    }
     const thread: OrchestrationV2AppThread = {
       createdBy: command.createdBy,
       creationSource: command.creationSource,
@@ -2700,9 +2721,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ? {}
         : { delegatedFrom: command.delegatedFrom }),
       lineage: {
-        parentThreadId: null,
-        relationshipToParent: null,
-        rootThreadId: command.threadId,
+        parentThreadId: spawnedBy ?? null,
+        relationshipToParent: spawnedBy === undefined ? null : "spawn",
+        rootThreadId: spawnedByThread?.lineage.rootThreadId ?? command.threadId,
       },
       forkedFrom: null,
       createdAt: now,
