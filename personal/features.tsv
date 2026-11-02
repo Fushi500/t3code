@@ -1,0 +1,10 @@
+# Personal features carried on personal/main. One per line, tab-separated:
+# id	commit subject (must appear in git log <nightly-tag>..HEAD)	check run after the build ($T3 is the new CLI)
+effort	feat(cli): t3 thread start and send take --effort	"$T3" thread start --help | grep -q -- --effort
+send-now	feat(cli): t3 thread send --now steers the running turn	"$T3" thread send --help | grep -q -- --now
+opencode-usage-oauth	fix(opencode): read usage from Console OAuth logins	true
+opencode-usage-account	fix(opencode): Console usage keeps one account across token refreshes	true
+settle	feat(cli): t3 thread settle and unsettle	"$T3" thread settle --help >/dev/null
+spawn-link	feat(mcp): link launched worker threads to the thread that started them	grep -aq showUnderThisThread "$APP/Contents/Resources/app.asar"
+parent-flag	feat(cli): t3 thread start --parent links the worker under a thread	"$T3" thread start --help | grep -q -- --parent && grep -aq "such as the t3 CLI" "$APP/Contents/Resources/app.asar"
+update-flow	chore(personal): one script rebases, builds, checks and installs the fork	test -x "$ROOT/personal/update.sh"
